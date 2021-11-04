@@ -15,7 +15,12 @@ config.read("./Config/config.ini")
 
 class Watcher:
     DIRECTORY_TO_WATCH = config["PATHS"]["inputDirectory"]
-    autoslicer = autoslice.AutoSlicer()
+    OUTPUT_DIRECTORY = config["PATHS"]["outputDirectory"]
+
+    SLICER_PATH = config["PATHS"]["slicer"]
+    CONFIG_PATH = config["PATHS"]["slicerConfig"]
+    TWEAKER_PATH = config["PATHS"]["tweaker"]
+    autoslicer = autoslice.AutoSlicer(SLICER_PATH, CONFIG_PATH, TWEAKER_PATH)
 
     def __init__(self):
         print("Watching", self.DIRECTORY_TO_WATCH)
@@ -49,9 +54,10 @@ class Watcher:
                     inputFilePath = os.path.join(self.DIRECTORY_TO_WATCH, file)
 
                     try:
-                        self.autoslicer.slice(inputFilePath, config, file)
+                        print("Autoslicer fileMonitor: attempting slice on", file)
+                        self.autoslicer.slice(inputFilePath, self.OUTPUT_DIRECTORY)
                     except:
-                        print("Couldn't slice file " + file)
+                        print("Autoslicer fileMonitor: Couldn't slice file " + file)
 
                     try:
                         # Clean folder to avoid endless loops on file

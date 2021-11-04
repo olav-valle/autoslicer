@@ -1,4 +1,5 @@
 import argparse
+import configparser
 import os
 import subprocess
 import tempfile
@@ -12,7 +13,9 @@ class AutoSlicer:
     treshold_supports = 1.0
     treshold_brim = 2.0
 
-    def __init__(self, slicer_path, config_path):
+    tweaker_path = ''
+
+    def __init__(self, slicer_path, config_path, tweaker_path):
         """Initialize AutoSlicer.
         
         Keyword arguments:
@@ -21,6 +24,7 @@ class AutoSlicer:
         """
         self.slicer = slicer_path
         self.config = config_path
+        self.tweaker = tweaker_path
 
 
     def __tweakFile(self, input_file, tmpdir):
@@ -28,16 +32,23 @@ class AutoSlicer:
 
         try:
             output_file = os.path.join(tmpdir, "tweaked.stl")
-            print(output_file)
+            print('autoslice.__tweakfile: output_file:', output_file)
             curr_path = os.path.dirname(os.path.abspath(__file__))
+            print('autoslice.__tweakfile: curr_path:', curr_path)
             if os.name == "nt":
-
+                print('autoslice.__tweakfile: OS is windows')
                 python_path = os.path.join(curr_path, "venv", "Scripts", "python")
             else:
+                print('autoslice.__tweakfile: os is unix-ish')
                 python_path = os.path.join(curr_path, "venv", "bin", "python")
-            tweaker_path = os.path.join(curr_path, "Tweaker-3/Tweaker.py")
+                print('autoslice.__tweakfile: python_path:',python_path )
+            tweaker_path = os.path.join(curr_path, self.tweaker, "Tweaker.py")
+            print('autoslice.__tweakfile: tweaker_path:', tweaker_path)
+
             result = subprocess.run([python_path, tweaker_path, "-i", input_file, "-o", output_file, "-x", "-vb"]
                                     , capture_output=True, text=True).stdout
+            print('autoslice.__tweakfile: result = subprocess.run:', result)
+
             # Get "unprintability" from stdout
             _, temp = result.splitlines()[-5].split(":")
             unprintability = str(round(float(temp.strip()), 2))
@@ -45,7 +56,8 @@ class AutoSlicer:
             #print(result)
             print(output_file)
             return output_file, unprintability
-        except:
+        except subprocess.SubprocessError as e:
+            print(e)
             print("Couldn't run tweaker on file " + self.input_file)
 
 
@@ -68,8 +80,12 @@ class AutoSlicer:
 
     def __runSlicer(self, input, output_path, unprintability):
         # Run PrusaSlicer
-        
+        print('autoslice.__runSlicer: preparing to start PrusaSlicer')
+        print('autoslice.__runSlicer: input = ', input)
+        print('autoslice.__runSlicer: output_path = ', output_path)
+        print('autoslice.__runSlicer: unprintability = ', unprintability)
         cwd = os.getcwd()
+        print('autoslice.__runSlicer: cwd = ', cwd)
 
         # Get filename with mostly alphanumeric characters
         # Avoids errors with octopi upload due to invalid characters in filename
@@ -91,11 +107,14 @@ class AutoSlicer:
             cmd.append("--support-material")
 
         cmd.extend(["-g", "-o", output_file, input])
-        print(cmd)
         try:
-            subprocess.run(cmd)
+            print('autoslice.__runSlicer: command string cmd = \n', cmd)
+            subprocess.run(cmd, check=True)
         except:
-            print("Couldn't slice file " + self.input_file)
+            # subprocess.SubprocessError as e:
+            # print(e)
+            print('autoslice.__runSlicer: command string cmd failed:', cmd)
+            print("autoslice.__runSlicer: Couldn't slice file " + self.input_file)
         return 
 
 
@@ -122,8 +141,9 @@ class AutoSlicer:
         """
         self.input_file = input
         with tempfile.TemporaryDirectory() as temp_directory:
-            print("Temp. dir:", temp_directory)
+            print("autoslicer.main.slice: Temp. dir:", temp_directory)
             tweaked_file, unprintability = self.__tweakFile(self.input_file, temp_directory)
+            print("autoslicer.main.slice tweak_file")
             translatedFile = self.__adjustHeight(tweaked_file, temp_directory)
             self.__runSlicer(translatedFile, output, unprintability)
 
@@ -137,6 +157,10 @@ if __name__ == "__main__":
     parser.add_argument("slicer", help="PrusaSlicer location")
     parser.add_argument("-o", "--output", help="Output folder (default is current location)", default=os.getcwd())
     args = parser.parse_args()
+
+    config = configparser.ConfigParser()
+    config.read("./Config/config.ini")
+    tweaker = config["PATHS"]["tweaker"]
 
     # Validate args:
     # Check if input file exists
@@ -162,9 +186,8 @@ if __name__ == "__main__":
     # Check if config file exists
     if not os.path.exists(args.printerConfig):
         print("Error: printer config file not found at", os.path.abspath(args.printerConfig))
-    
 
-    autoslicer = AutoSlicer(slicer_path=args.slicer, config_path=args.printerConfig)
+    autoslicer = AutoSlicer(slicer_path=args.slicer, config_path=args.printerConfig, tweaker_path=tweaker)
     input_file = os.path.abspath(args.inputFile)
     output_path = os.path.abspath(args.output)
     autoslicer.slice(input_file, output_path)
